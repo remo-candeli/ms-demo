@@ -1,0 +1,89 @@
+version: '2.1'
+services:
+  database:
+    image: mariadb:latest
+    container_name: mariadb
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_USER: root
+      MYSQL_USER: root
+      MYSQL_ROOT_PASSWORD: test
+      MYSQL_DATABASE: microservices_dev
+    volumes:
+      - ./my.cnf:/etc/mysql/my.cnf
+      - ./init.sql:/docker-entrypoint-initdb.d/1-init.sql
+      - ./data.sql:/docker-entrypoint-initdb.d/2-data.sql
+    networks:
+      backend:
+        aliases:
+          - database
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  configserver:
+    image: ms-demo/configserver:1.0.0-SNAPSHOT
+    container_name: ms-demo.configserver
+    ports:
+      - "8071:8071"
+    networks:
+      backend:
+        aliases:
+          - configserver
+  eurekaserver:
+    image: ms-demo/eurekaserver:1.0.0-SNAPSHOT
+    container_name: ms-demo.eurekaserver
+    ports:
+      - "8070:8070"
+    depends_on:
+      database:
+        condition: service_healthy
+      configserver:
+        condition: service_started
+    networks:
+      backend:
+        aliases:
+          - eurekaserver
+  licensingservice:
+    image: ms-demo/ms-licensing:1.0.0-SNAPSHOT
+    container_name: ms-demo.ms-licensing
+    environment:
+      PROFILE: "dev"
+      CONFIGSERVER_URI: "http://configserver:8071"
+      CONFIGSERVER_PORT:   "8071"
+      DATABASESERVER_PORT: "3306"
+      ENCRYPT_KEY:       "IMSYMMETRIC"
+    depends_on:
+      database:
+        condition: service_healthy
+      configserver:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    networks:
+      - backend
+
+  organizationservice:
+    image: ms-demo/ms-organization:1.0.0-SNAPSHOT
+    container_name: ms-demo.ms-organization
+    environment:
+      PROFILE: "dev"
+      CONFIGSERVER_URI: "http://configserver:8071"
+      CONFIGSERVER_PORT:   "8071"
+      DATABASESERVER_PORT: "5432"
+      ENCRYPT_KEY:       "IMSYMMETRIC"
+    depends_on:
+      database:
+        condition: service_healthy
+      configserver:
+        condition: service_started
+    ports:
+      - "8081:8081"
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
